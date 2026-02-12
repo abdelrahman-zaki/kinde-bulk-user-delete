@@ -1,12 +1,13 @@
 # Kinde Bulk User Delete
 
-This repository contains TypeScript scripts for bulk user deletion operations against a Kinde business using the Management API.
+This repository contains TypeScript scripts for bulk deletion operations against a Kinde business using the Management API.
 
-Right now it includes a single script:
+It includes:
 
-- `deleteAllUsers.ts` – deletes all users in the business by paging through `/api/v1/users` and deleting each user via `/api/v1/user`.
+- `deleteAllUsers.ts` - deletes all users in the business by paging through `/api/v1/users` and deleting each user via `/api/v1/user`.
+- `deleteOrgUsersIdentities.ts` - deletes all identities for users in a specific organization.
 
-> ⚠️ **Danger zone:** These scripts are destructive. Always double‑check your `.env` values before running anything.
+> WARNING: These scripts are destructive. Always double-check your `.env` values before running anything.
 
 ---
 
@@ -27,14 +28,35 @@ Deletes **all users** from the configured Kinde business:
 To reduce the risk of accidents, the script will only run if
 `KINDE_CONFIRM_DELETE_ALL=true` is set in your `.env` file.
 
+### `deleteOrgUsersIdentities.ts`
+
+Deletes all identities for users in one organization:
+
+- Fetches org users from `GET /api/v1/organizations/{org_code}/users`
+- Uses `next_token` for org users pagination
+- Stops org users pagination on empty page (even if `next_token` exists)
+- For each user, fetches identities from `GET /api/v1/users/{user_id}/identities`
+- Uses `starting_after` cursor pagination for identities and stops when `has_more=false` or an empty page is returned
+- Deletes each identity via `DELETE /api/v1/identities/{identity_id}`
+- Retries on 429 (rate limit) and 5xx with exponential backoff + jitter
+- Refreshes token once on 401
+- Logs progress per user and final totals
+
+To reduce the risk of accidents, the script will only run if
+`KINDE_CONFIRM_DELETE_ORG_IDENTITIES=true` is set in your `.env` file.
+
 ---
 
 ## Requirements
 
 - A **Kinde M2M application** with access to the **Management API**
-- Scopes on the M2M app:
+- Scopes for `deleteAllUsers.ts`:
   - `read:users`
   - `delete:users`
+- Scopes for `deleteOrgUsersIdentities.ts`:
+  - `read:organization_users`
+  - `read:user_identities`
+  - `delete:identities`
 
 ---
 
@@ -53,19 +75,20 @@ To reduce the risk of accidents, the script will only run if
    Update the file with your application settings. These can be found within the M2M application details within the Kinde dashboard
 
    ```env
-   KINDE_CLIENT_ID=your_m2m_client_id
-   KINDE_CLIENT_SECRET=your_m2m_client_secret
-   KINDE_HOST=https://your_subdomain.kinde.com
+   KINDE_CLIENT_ID=<your_m2m_client_id>
+   KINDE_CLIENT_SECRET=<your_m2m_client_secret>
+   KINDE_HOST=https://<your_kinde_subdomain>.kinde.com
    KINDE_PAGE_SIZE=50
-  
-   KINDE_CONFIRM_DELETE_ALL=true
+   KINDE_ORG_CODE=org_1234567890
+
+   KINDE_CONFIRM_DELETE_ALL=false
    KINDE_MAX_RETRIES=6
    KINDE_BASE_DELAY_MS=500
    # optional override (defaults to `${KINDE_HOST}/api`)
-   # KINDE_AUDIENCE=https://abdelrahmanzakii.kinde.com/api
+   # KINDE_AUDIENCE=<your-api>
    ```
 
-   > **Important:** Only set `KINDE_CONFIRM_DELETE_ALL=true` when you really intend to wipe all users in that environment.
+   > **Important:** Only set confirm flags to `true` when you really intend to run destructive deletes.
 
 3. **(Optional) Add an npm script**
 
@@ -73,7 +96,8 @@ To reduce the risk of accidents, the script will only run if
 
    ```json
    "scripts": {
-     "delete:all-users": "ts-node deleteAllUsers.ts"
+     "delete:all-users": "ts-node deleteAllUsers.ts",
+     "delete:org-identities": "ts-node deleteOrgUsersIdentities.ts"
    }
    ```
 
@@ -100,3 +124,23 @@ You’ll see logs like:
 - deleting each user
 - retries on rate limits / transient errors
 - final summary (`success`, `failed` counts)
+
+### Delete identities for users in one org
+
+From the repo root:
+
+```bash
+# Using ts-node directly
+npx ts-node deleteOrgUsersIdentities.ts
+
+# Or via npm script (if added)
+npm run delete:org-identities
+```
+
+You will see logs for:
+
+- org users pages (`next_token` pagination)
+- per-user identity page fetches (`starting_after` pagination)
+- each identity deletion
+- retries on rate limits / transient errors
+- final org summary (`users_processed`, `identities_deleted`, `identities_failed`)
