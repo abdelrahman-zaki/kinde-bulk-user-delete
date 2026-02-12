@@ -3,7 +3,8 @@
   "version": "1.0.0",
   "description": "TypeScript scripts for bulk user deletion operations using the Kinde Management API.",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "delete:all-users": "ts-node deleteAllUsers.ts",
+    "delete:org-identities": "ts-node deleteOrgUsersIdentities.ts"
   },
   "keywords": [],
   "author": "",
