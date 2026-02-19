@@ -4,7 +4,8 @@
   "description": "TypeScript scripts for bulk user deletion operations using the Kinde Management API.",
   "scripts": {
     "delete:all-users": "ts-node deleteAllUsers.ts",
-    "delete:org-identities": "ts-node deleteOrgUsersIdentities.ts"
+    "delete:org-identities": "ts-node deleteOrgUsersIdentities.ts",
+    "copy:org-users": "ts-node copyOrgUsersToOrganization.ts"
   },
   "keywords": [],
   "author": "",
