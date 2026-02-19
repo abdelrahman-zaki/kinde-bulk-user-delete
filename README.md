@@ -1,13 +1,14 @@
-# Kinde Bulk User Delete
+# Kinde Bulk User Management Scripts
 
-This repository contains TypeScript scripts for bulk deletion operations against a Kinde business using the Management API.
+This repository contains TypeScript scripts for bulk user operations against a Kinde business using the Management API.
 
 It includes:
 
 - `deleteAllUsers.ts` - deletes all users in the business by paging through `/api/v1/users` and deleting each user via `/api/v1/user`.
 - `deleteOrgUsersIdentities.ts` - deletes all identities for users in a specific organization.
+- `copyOrgUsersToOrganization.ts` - copies users from one organization to another using organization user assignment.
 
-> WARNING: These scripts are destructive. Always double-check your `.env` values before running anything.
+> WARNING: Some scripts are destructive and others are high-impact. Always double-check your `.env` values before running anything.
 
 ---
 
@@ -43,7 +44,25 @@ Deletes all identities for users in one organization:
 - Logs progress per user and final totals
 
 To reduce the risk of accidents, the script will only run if
-`KINDE_CONFIRM_DELETE_ORG_IDENTITIES=true` is set in your `.env` file.
+`KINDE_CONFIRM_DELETE_ALL=true` is set in your `.env` file.
+
+### `copyOrgUsersToOrganization.ts`
+
+Copies users from a source org to a target org:
+
+- Fetches users from `GET /api/v1/organizations/{org_code}/users`
+- Uses `next_token` for pagination
+- Stops pagination on empty page (even if `next_token` exists)
+- Collects only unique user IDs
+- Fetches current users in the target org and skips existing IDs
+- Adds missing users to target via `POST /api/v1/organizations/{org_code}/users` with body items containing only `id`
+- Sends additions in batches and falls back to per-user adds if a batch fails
+- Retries on 429 (rate limit) and 5xx with exponential backoff + jitter
+- Refreshes token once on 401
+- Logs progress and final add/failure totals
+
+To reduce accidental org changes, the script will only run if
+`KINDE_CONFIRM_COPY_ORG_USERS=true` is set in your `.env` file.
 
 ---
 
@@ -57,6 +76,9 @@ To reduce the risk of accidents, the script will only run if
   - `read:organization_users`
   - `read:user_identities`
   - `delete:identities`
+- Scopes for `copyOrgUsersToOrganization.ts`:
+  - `read:organization_users`
+  - `create:organization_users`
 
 ---
 
@@ -80,25 +102,16 @@ To reduce the risk of accidents, the script will only run if
    KINDE_HOST=https://<your_kinde_subdomain>.kinde.com
    KINDE_PAGE_SIZE=50
    KINDE_ORG_CODE=org_1234567890
+   KINDE_SOURCE_ORG_CODE=org_1234567890
+   KINDE_TARGET_ORG_CODE=org_1234567890
+   KINDE_ASSIGN_BATCH_SIZE=50
 
    KINDE_CONFIRM_DELETE_ALL=false
+   KINDE_CONFIRM_COPY_ORG_USERS=false
    KINDE_MAX_RETRIES=6
    KINDE_BASE_DELAY_MS=500
    # optional override (defaults to `${KINDE_HOST}/api`)
    # KINDE_AUDIENCE=<your-api>
-   ```
-
-   > **Important:** Only set confirm flags to `true` when you really intend to run destructive deletes.
-
-3. **(Optional) Add an npm script**
-
-   In `package.json`:
-
-   ```json
-   "scripts": {
-     "delete:all-users": "ts-node deleteAllUsers.ts",
-     "delete:org-identities": "ts-node deleteOrgUsersIdentities.ts"
-   }
    ```
 
 ---
@@ -144,3 +157,24 @@ You will see logs for:
 - each identity deletion
 - retries on rate limits / transient errors
 - final org summary (`users_processed`, `identities_deleted`, `identities_failed`)
+
+### Copy users from one org to another
+
+From the repo root:
+
+```bash
+# Using ts-node directly
+npx ts-node copyOrgUsersToOrganization.ts
+
+# Or via npm script
+npm run copy:org-users
+```
+
+You will see logs for:
+
+- source org users pagination (`next_token`)
+- target org users pagination (`next_token`)
+- skipped users already in target
+- batch add attempts and fallback single-user attempts when needed
+- retries on rate limits / transient errors
+- final summary (`users_targeted`, `added`, `failed`, `batch_failures`)
